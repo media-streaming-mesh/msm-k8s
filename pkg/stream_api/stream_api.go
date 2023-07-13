@@ -149,7 +149,8 @@ func (s *StreamAPI) modelObjToCrdObj(data model.StreamData) *mediastreamsv1.Stre
 			APIVersion: CRDGroup + "/" + CRDVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: FullCRDName,
+			Name:      FullCRDName,
+			Namespace: "default",
 		},
 		Spec: mediastreamsv1.StreamdataSpec{
 			StubIp:     data.StubIp,
