@@ -112,13 +112,17 @@ func (s *StreamAPI) WatchStreams(dataChan chan<- model.StreamData) {
 	case event := <-watchInterface.ResultChan():
 		s.log("Watch event %v result %v", event.Type, event.Object)
 		crdData := event.Object.(*mediastreamsv1.Streamdata)
-		dataChan <- s.crObjToModelObj(crdData)
+		crdDataList := event.Object.(*mediastreamsv1.StreamdataList)
+
+		//dataChan <- s.crObjToModelObj(crdData)
+		s.log("crd object %v", crdData)
+		s.log("crd list object %v", crdDataList)
 
 		if event.Type == watch.Added {
 			s.log("Received Add event")
 		}
-
 	}
+	s.log("End WATCH for CRD streamData")
 }
 
 func (s *StreamAPI) crObjToModelObj(crdData *mediastreamsv1.Streamdata) model.StreamData {
