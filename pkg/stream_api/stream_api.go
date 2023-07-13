@@ -111,6 +111,7 @@ func (s *StreamAPI) WatchStreams(dataChan chan<- model.StreamData) {
 	if err != nil {
 		s.log("Failed watch CRD streamData with error %v", err)
 	}
+	defer watchInterface.Stop()
 
 	select {
 	case event := <-watchInterface.ResultChan():
@@ -174,6 +175,7 @@ func (s *StreamAPI) modelObjToCrdObj(data model.StreamData) *mediastreamsv1.Stre
 	}
 }
 
+// TODO: add ports
 func (s *StreamAPI) getCRDName(data model.StreamData) string {
-	return data.ServerIp + ":" + string(data.ServerPorts[0]) + ":" + data.ClientIp + ":" + string(data.ClientPorts[0])
+	return "streamdata" + "-" + data.ServerIp + "-" + data.ClientIp
 }
