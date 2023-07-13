@@ -93,9 +93,13 @@ func (s *StreamAPI) Update(data model.StreamData) error {
 
 // TODO: use mediastreamsv1.Streamdata when refactor msm-cp and msm-nc to mediastreamsv1.Streamdata
 func (s *StreamAPI) Delete(data model.StreamData) error {
-	crdData := s.modelObjToCrdObj(data)
+	crdData, err := s.Get(s.getCRDName(data))
+	if err != nil {
+		return err
+	}
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	err := s.crdClient.Delete(ctx, crdData)
+	err = s.crdClient.Delete(ctx, crdData)
 	return err
 }
 
@@ -112,11 +116,9 @@ func (s *StreamAPI) WatchStreams(dataChan chan<- model.StreamData) {
 	case event := <-watchInterface.ResultChan():
 		s.log("Watch event %v result %v", event.Type, event.Object)
 		crdData := event.Object.(*mediastreamsv1.Streamdata)
-		crdDataList := event.Object.(*mediastreamsv1.StreamdataList)
 
 		//dataChan <- s.crObjToModelObj(crdData)
 		s.log("crd object %v", crdData)
-		s.log("crd list object %v", crdDataList)
 
 		if event.Type == watch.Added {
 			s.log("Received Add event")
@@ -153,7 +155,7 @@ func (s *StreamAPI) modelObjToCrdObj(data model.StreamData) *mediastreamsv1.Stre
 			APIVersion: CRDGroup + "/" + CRDVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      FullCRDName,
+			Name:      s.getCRDName(data),
 			Namespace: "default",
 		},
 		Spec: mediastreamsv1.StreamdataSpec{
@@ -170,4 +172,8 @@ func (s *StreamAPI) modelObjToCrdObj(data model.StreamData) *mediastreamsv1.Stre
 			StreamStatus: "CREATE",
 		},
 	}
+}
+
+func (s *StreamAPI) getCRDName(data model.StreamData) string {
+	return data.ServerIp + ":" + string(data.ServerPorts[0]) + ":" + data.ClientIp + ":" + string(data.ClientPorts[0])
 }
