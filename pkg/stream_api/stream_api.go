@@ -2,42 +2,41 @@ package stream_api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
-
+	mediastreamsv1 "github.com/media-streaming-mesh/msm-k8s/api/v1"
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/api/v3/mvccpb"
-	clientv3 "go.etcd.io/etcd/client/v3"
-
-	"github.com/media-streaming-mesh/msm-k8s/pkg/model"
-)
-
-var (
-	endpoints      = []string{"etcd-client:2379"}
-	dialTimeout    = 10 * time.Second
-	requestTimeout = 10 * time.Second
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"log"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 )
 
 type StreamAPI struct {
-	logger *logrus.Logger
-	client *clientv3.Client
+	crdClient client.WithWatch
+	logger    *logrus.Logger
 }
 
 func NewStreamAPI(logger *logrus.Logger) *StreamAPI {
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   endpoints,
-		DialTimeout: dialTimeout,
-	})
+	restConfig, err := rest.InClusterConfig()
 	if err != nil {
-		logger.Errorf("[Stream API] create client error %v", err)
+		log.Fatal(err)
 	}
 
-	logger.Infof("[Stream API] created client %v", endpoints)
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(mediastreamsv1.AddToScheme(scheme))
+
+	crdClient, err := client.NewWithWatch(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	return &StreamAPI{
-		logger: logger,
-		client: cli,
+		crdClient: crdClient,
+		logger:    logger,
 	}
 }
 
@@ -49,105 +48,22 @@ func (s *StreamAPI) logError(format string, args ...interface{}) {
 	s.logger.Errorf("[Stream API] " + fmt.Sprintf(format, args...))
 }
 
-func (s *StreamAPI) Put(data model.StreamData) error {
-	// Prepare data
-	// TODO: use protobuf
-	jsonData, err := json.Marshal(data)
-	stringData := string(jsonData)
+func (s *StreamAPI) List() (*mediastreamsv1.StreamdataList, error) {
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	result := &mediastreamsv1.StreamdataList{}
 
-	if len(data.ServerPorts) == 0 || len(data.ClientPorts) == 0 {
-		return fmt.Errorf("[Stream API] streamData server/client port is empty")
-	}
-
-	// PUT data
-	key := fmt.Sprintf("streamKey:%v:%v:%v:%v", data.ServerIp, data.ServerPorts[0], data.ClientIp, data.ClientPorts[0])
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	resp, err := s.client.Put(ctx, key, stringData)
-	cancel()
-	if err != nil {
-		return err
-	}
-	// use the response
-	s.log("PUT key %v response %v", key, resp)
-
-	return nil
+	err := s.crdClient.List(ctx, result)
+	return result, err
 }
 
-func (s *StreamAPI) GetStreams() ([]model.StreamData, error) {
-	var streams []model.StreamData
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	resp, err := s.client.Get(ctx, "streamKey", clientv3.WithPrefix())
-	cancel()
-	if err != nil {
-		return streams, err
-	}
-	s.log("GET response %v", resp)
-
-	for _, response := range resp.Kvs {
-		var streamData model.StreamData
-		json.Unmarshal(response.Value, &streamData)
-		streams = append(streams, streamData)
-		s.log("Stream data %v", streamData)
-	}
-	return streams, nil
+func (s *StreamAPI) Create(data *mediastreamsv1.Streamdata) error {
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	err := s.crdClient.Create(ctx, data)
+	return err
 }
 
-func (s *StreamAPI) WatchStreams(dataChan chan<- model.StreamData) {
-	s.log("Start WATCH for key with prefix 'streamKey'")
-	watchChan := s.client.Watch(context.Background(), "streamKey", clientv3.WithPrefix())
-	for resp := range watchChan {
-		for _, event := range resp.Events {
-			switch event.Type {
-			case mvccpb.PUT:
-				// process with put event
-				var streamData model.StreamData
-				json.Unmarshal(event.Kv.Value, &streamData)
-				s.log("PUT Stream data %v", streamData)
-				dataChan <- streamData
-			case mvccpb.DELETE:
-				// process with delete event
-				var streamData model.StreamData
-				json.Unmarshal(event.Kv.Value, &streamData)
-				updateStreamData := model.StreamData{
-					StubIp:      streamData.StubIp,
-					ServerIp:    streamData.ServerIp,
-					ClientIp:    streamData.ClientIp,
-					ServerPorts: streamData.ServerPorts,
-					ClientPorts: streamData.ClientPorts,
-					StreamState: model.Teardown,
-				}
-				s.log("DELETE Stream data %v", updateStreamData)
-				dataChan <- updateStreamData
-			}
-		}
-	}
-}
-
-func (s *StreamAPI) DeleteStream(data model.StreamData) error {
-	if len(data.ServerPorts) == 0 || len(data.ClientPorts) == 0 {
-		return fmt.Errorf("[Stream API] streamData server/client port is empty")
-	}
-
-	key := fmt.Sprintf("streamKey:%v:%v:%v:%v", data.ServerIp, data.ServerPorts[0], data.ClientIp, data.ClientPorts[0])
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	resp, err := s.client.Delete(ctx, key)
-	cancel()
-	if err != nil {
-		return err
-	}
-	s.log("DELETE key %v response %v", key, resp)
-
-	return nil
-}
-
-func (s *StreamAPI) DeleteStreams() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	resp, err := s.client.Delete(ctx, "streamKey", clientv3.WithPrefix())
-	cancel()
-	if err != nil {
-		return err
-	}
-	s.log("DELETE all keys with prefix 'streamKey' response %v", resp)
-
-	return nil
+func (s *StreamAPI) Update(data *mediastreamsv1.Streamdata) error {
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	err := s.crdClient.Update(ctx, data)
+	return err
 }
