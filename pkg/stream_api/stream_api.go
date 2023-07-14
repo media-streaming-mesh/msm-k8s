@@ -77,7 +77,7 @@ func (s *StreamAPI) Get(name string) (*mediastreamsv1.Streamdata, error) {
 
 // TODO: use mediastreamsv1.Streamdata when refactor msm-cp and msm-nc to mediastreamsv1.Streamdata
 func (s *StreamAPI) Create(data model.StreamData) error {
-	crdData := s.modelObjToCrdObj(data)
+	crdData := s.ModelObjToCRDObj(data)
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	err := s.crdClient.Create(ctx, crdData)
 	return err
@@ -85,7 +85,7 @@ func (s *StreamAPI) Create(data model.StreamData) error {
 
 // TODO: use mediastreamsv1.Streamdata when refactor msm-cp and msm-nc to mediastreamsv1.Streamdata
 func (s *StreamAPI) Update(data model.StreamData) error {
-	crdData := s.modelObjToCrdObj(data)
+	crdData := s.ModelObjToCRDObj(data)
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	err := s.crdClient.Update(ctx, crdData)
 	return err
@@ -128,7 +128,7 @@ func (s *StreamAPI) WatchStreams(dataChan chan<- model.StreamData) {
 	s.log("End WATCH for CRD streamData")
 }
 
-func (s *StreamAPI) crObjToModelObj(crdData *mediastreamsv1.Streamdata) model.StreamData {
+func (s *StreamAPI) CRDObjToModelObj(crdData *mediastreamsv1.Streamdata) model.StreamData {
 	var streamState model.StreamState
 
 	if strings.ToLower(crdData.Spec.StreamState) == "create" {
@@ -149,7 +149,7 @@ func (s *StreamAPI) crObjToModelObj(crdData *mediastreamsv1.Streamdata) model.St
 	}
 }
 
-func (s *StreamAPI) modelObjToCrdObj(data model.StreamData) *mediastreamsv1.Streamdata {
+func (s *StreamAPI) ModelObjToCRDObj(data model.StreamData) *mediastreamsv1.Streamdata {
 	return &mediastreamsv1.Streamdata{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Streamdata",
