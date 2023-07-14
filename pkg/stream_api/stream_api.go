@@ -85,9 +85,29 @@ func (s *StreamAPI) Create(data model.StreamData) error {
 
 // TODO: use mediastreamsv1.Streamdata when refactor msm-cp and msm-nc to mediastreamsv1.Streamdata
 func (s *StreamAPI) Update(data model.StreamData) error {
-	crdData := s.ModelObjToCRDObj(data)
+	crdData, err := s.Get(s.getCRDName(data))
+	if err != nil {
+		return err
+	}
+
+	var streamState string
+	if data.StreamState == model.Create {
+		streamState = "create"
+	} else if data.StreamState == model.Play {
+		streamState = "play"
+	} else if data.StreamState == model.Teardown {
+		streamState = "teardown"
+	}
+
+	crdData.Spec.StubIp = data.StubIp
+	crdData.Spec.ServerIp = data.ServerIp
+	crdData.Spec.ClientIp = data.ClientIp
+	crdData.Spec.ServerPort = int(data.ServerPorts[0])
+	crdData.Spec.ClientPort = int(data.ClientPorts[0])
+	crdData.Spec.StreamState = streamState
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	err := s.crdClient.Update(ctx, crdData)
+	err = s.crdClient.Update(ctx, crdData)
 	return err
 }
 
