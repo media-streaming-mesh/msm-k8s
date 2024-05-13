@@ -1,6 +1,6 @@
 module github.com/media-streaming-mesh/msm-k8s
 
-go 1.20
+go 1.22
 
 require (
 	github.com/media-streaming-mesh/msm-cp v0.0.0-20230626170322-605f8dc80e16
